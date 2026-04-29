@@ -1,5 +1,8 @@
 #!/bin/bash
-# Использование: ./ct.sh bitrix:catalog.element my-template
+# Использование: .dev/tools/ct.sh bitrix:catalog.element my-template
+# Например:
+# .dev/tools/ct.sh bitrix:system.pagenavigation
+
 
 COMPONENT=$1
 TEMPLATE=${2:-.default}
