@@ -2,7 +2,7 @@
 <?php
 
 /**
- * Сжимает JPEG-файлы в ./upload для dev-сайтов на Bitrix.
+ * Сжимает файлы изображений в ./upload для dev-сайтов на Bitrix.
  *
  */
 
@@ -31,13 +31,13 @@ $options = getopt('', [
 
 if (isset($options['help'])) {
     echo <<<TXT
-Сжимает JPEG-файлы в ./upload для dev-сайтов на Bitrix.
+Сжимает изображения в ./upload для dev-сайтов на Bitrix.
 
 Использование:
   php .dev/tools/cuj.php [options]
 
 Опции:
-  --quality=35                              Качество JPEG, 0..100
+  --quality=35                              Качество JPEG/WebP, 0..100 (для PNG влияет на уровень сжатия)
   --max-width=320                           Уменьшать, если ширина больше
   --max-height=320                          Уменьшать, если высота больше
   --log-file=compress-upload-success.log    Имя лога успешной обработки внутри ./upload
@@ -48,7 +48,7 @@ if (isset($options['help'])) {
 Правила:
   - Запускать только из корня сайта
   - Требуется ./.htaccess со строкой: SetEnv APPLICATION_ENV dev
-  - Обрабатываются только JPG/JPEG внутри ./upload
+  - Обрабатываются JPG/JPEG/PNG/WebP внутри ./upload
   - Пропускаются ./upload/resize_cache и служебные каталоги
   - При следующем запуске пропускаются файлы, уже отмеченные как [OK] в логе
 
@@ -181,7 +181,7 @@ foreach ($iterator as $file) {
 
     $path = $file->getPathname();
     $extension = strtolower($file->getExtension());
-    if (!in_array($extension, ['jpg', 'jpeg'], true)) {
+    if (!in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
         continue;
     }
 
@@ -200,7 +200,8 @@ foreach ($iterator as $file) {
 
     try {
         $imageInfo = @getimagesize($path);
-        if (!$imageInfo || !isset($imageInfo[2]) || $imageInfo[2] !== IMAGETYPE_JPEG) {
+        $imageType = $imageInfo[2] ?? null;
+        if (!$imageInfo || !isSupportedImageType($imageType)) {
             $stats['skipped_invalid']++;
             continue;
         }
@@ -223,9 +224,9 @@ foreach ($iterator as $file) {
             continue;
         }
 
-        $source = @imagecreatefromjpeg($path);
+        $source = createImageResource($path, $imageType);
         if (!$source) {
-            throw new RuntimeException('Не удалось открыть JPEG');
+            throw new RuntimeException('Не удалось открыть изображение');
         }
 
         $result = $source;
@@ -235,6 +236,8 @@ foreach ($iterator as $file) {
                 imagedestroy($source);
                 throw new RuntimeException('Не удалось выделить память под уменьшенное изображение');
             }
+
+            prepareDestinationCanvas($result, $imageType);
 
             if (!imagecopyresampled(
                 $result,
@@ -254,14 +257,12 @@ foreach ($iterator as $file) {
             }
         }
 
-        @imageinterlace($result, true);
-
-        if (!@imagejpeg($result, $path, $quality)) {
+        if (!saveImageResource($result, $path, $imageType, $quality)) {
             if ($result !== $source) {
                 imagedestroy($result);
             }
             imagedestroy($source);
-            throw new RuntimeException('Не удалось сохранить JPEG');
+            throw new RuntimeException('Не удалось сохранить изображение');
         }
 
         if ($result !== $source) {
@@ -337,6 +338,60 @@ function loadProcessedFromLog(string $logPath): array
 
     fclose($handle);
     return $processed;
+}
+
+function isSupportedImageType(?int $imageType): bool
+{
+    return in_array($imageType, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true);
+}
+
+function createImageResource(string $path, int $imageType)
+{
+    switch ($imageType) {
+        case IMAGETYPE_JPEG:
+            return @imagecreatefromjpeg($path);
+        case IMAGETYPE_PNG:
+            return @imagecreatefrompng($path);
+        case IMAGETYPE_WEBP:
+            if (!function_exists('imagecreatefromwebp')) {
+                return false;
+            }
+            return @imagecreatefromwebp($path);
+        default:
+            return false;
+    }
+}
+
+function saveImageResource($resource, string $path, int $imageType, int $quality): bool
+{
+    switch ($imageType) {
+        case IMAGETYPE_JPEG:
+            @imageinterlace($resource, true);
+            return (bool) @imagejpeg($resource, $path, $quality);
+        case IMAGETYPE_PNG:
+            $compression = (int) round((100 - $quality) * 9 / 100);
+            $compression = max(0, min(9, $compression));
+            return (bool) @imagepng($resource, $path, $compression);
+        case IMAGETYPE_WEBP:
+            if (!function_exists('imagewebp')) {
+                return false;
+            }
+            return (bool) @imagewebp($resource, $path, $quality);
+        default:
+            return false;
+    }
+}
+
+function prepareDestinationCanvas($canvas, int $imageType): void
+{
+    if (!in_array($imageType, [IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) {
+        return;
+    }
+
+    imagealphablending($canvas, false);
+    imagesavealpha($canvas, true);
+    $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+    imagefilledrectangle($canvas, 0, 0, imagesx($canvas), imagesy($canvas), $transparent);
 }
 
 function intOption(array $options, string $name, int $default, int $min, int $max): int
