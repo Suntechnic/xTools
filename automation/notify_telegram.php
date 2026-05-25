@@ -166,7 +166,7 @@ if ($CommitsText === '') {
     exit(0);
 }
 
-$MessageText = "Новые коммиты:\n" . $CommitsText;
+$MessageText = $CommitsText;
 $MaxLength = 4000;
 if (getTextLength($MessageText) > $MaxLength) {
     $MessageText = cutText($MessageText, 3950) . "\n... (сообщение обрезано)";
