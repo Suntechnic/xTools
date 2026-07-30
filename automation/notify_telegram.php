@@ -85,7 +85,11 @@ function getHttpStatusCode (array $lstHeaders): int
 /**
  * Отправляет текст в Telegram Bot API методом sendMessage.
  */
-function sendTelegramMessage (string $Token, string $ChatId, string $Text, ?string $Proxy = null): array
+function sendTelegramMessage (string $Token, string $ChatId, string $Text, 
+        ?string $Proxy = null,
+        ?string $ProxyUser = null,
+        ?string $ProxyPass = null
+    ): array
 {
     $Url = 'https://api.telegram.org/bot' . $Token . '/sendMessage';
 
@@ -95,10 +99,11 @@ function sendTelegramMessage (string $Token, string $ChatId, string $Text, ?stri
         'disable_web_page_preview' => true,
     ];
 
+    $Headers = "Content-Type: application/x-www-form-urlencoded\r\n";
+
     $dctContext = [
         'http' => [
             'method' => 'POST',
-            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
             'content' => http_build_query($dctPayload),
             'timeout' => 15,
             'ignore_errors' => true,
@@ -108,7 +113,14 @@ function sendTelegramMessage (string $Token, string $ChatId, string $Text, ?stri
     if ($Proxy !== null) {
         $dctContext['http']['proxy'] = $Proxy;
         $dctContext['http']['request_fulluri'] = true;
+
+        if ($ProxyUser !== null && $ProxyPass !== null) {
+            $Auth = base64_encode($ProxyUser . ':' . $ProxyPass);
+            $Headers .= "Proxy-Authorization: Basic {$Auth}\r\n";
+        }
     }
+
+    $dctContext['http']['header'] = $Headers;
 
     $context = stream_context_create($dctContext);
     $Response = @file_get_contents($Url, false, $context);
@@ -166,7 +178,11 @@ if (!is_array($dctIni)) {
 }
 
 $Token = getIniSetting($dctIni, 'telegram', 'bot_token') ?? getIniSetting($dctIni, 'telegram', 'token');
+
 $Proxy = getIniSetting($dctIni, 'telegram', 'proxy');
+$ProxyUser = getIniSetting($dctIni, 'telegram', 'proxy_user');
+$ProxyPass = getIniSetting($dctIni, 'telegram', 'proxy_pass');
+
 $ChatIdsRaw = getIniSetting($dctIni, 'telegram', 'chat_ids') ?? getIniSetting($dctIni, 'telegram', 'chat_id');
 
 if ($Token === null) {
@@ -199,7 +215,7 @@ if (getTextLength($MessageText) > $MaxLength) {
 
 $SendErrors = [];
 foreach ($ChatIds as $ChatId) {
-    $dctResult = sendTelegramMessage($Token, $ChatId, $MessageText, $Proxy);
+    $dctResult = sendTelegramMessage($Token, $ChatId, $MessageText, $Proxy, $ProxyUser, $ProxyPass);
     if (($dctResult['ok'] ?? false) !== true) {
         $Error = (string)($dctResult['error'] ?? 'Неизвестная ошибка.');
         $Details = (string)($dctResult['details'] ?? '');
