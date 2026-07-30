@@ -1,6 +1,22 @@
 <?php
-
 declare(strict_types=1);
+
+/**
+ * Скрипт для отправки уведомлений в Telegram через Bot API.
+ *
+ * Использование:
+ *   php notify_telegram.php "Текст уведомления"
+ *
+ * Настройки берутся из файла tg.ini в той же директории.
+ * Пример tg.ini:
+ *
+ * [telegram]
+ * bot_token = "ВАШ_ТОКЕН_БОТА"
+ * chat_id = "ВАШ_CHAT_ID"           ; или chat_ids = "CHAT1,CHAT2"
+ * chat_ids = "CHAT1,CHAT2"          ; несколько чатов через запятую
+ * proxy = "http://user:pass@host:port"
+ */
+
 
 /**
  * Возвращает длину строки с поддержкой UTF-8 при наличии mbstring.
@@ -69,7 +85,7 @@ function getHttpStatusCode (array $lstHeaders): int
 /**
  * Отправляет текст в Telegram Bot API методом sendMessage.
  */
-function sendTelegramMessage (string $Token, string $ChatId, string $Text): array
+function sendTelegramMessage (string $Token, string $ChatId, string $Text, ?string $Proxy = null): array
 {
     $Url = 'https://api.telegram.org/bot' . $Token . '/sendMessage';
 
@@ -88,6 +104,11 @@ function sendTelegramMessage (string $Token, string $ChatId, string $Text): arra
             'ignore_errors' => true,
         ],
     ];
+
+    if ($Proxy !== null) {
+        $dctContext['http']['proxy'] = $Proxy;
+        $dctContext['http']['request_fulluri'] = true;
+    }
 
     $context = stream_context_create($dctContext);
     $Response = @file_get_contents($Url, false, $context);
@@ -144,18 +165,22 @@ if (!is_array($dctIni)) {
     exit(1);
 }
 
-
-
 $Token = getIniSetting($dctIni, 'telegram', 'bot_token') ?? getIniSetting($dctIni, 'telegram', 'token');
-$ChatId = getIniSetting($dctIni, 'telegram', 'chat_id');
+$Proxy = getIniSetting($dctIni, 'telegram', 'proxy');
+$ChatIdsRaw = getIniSetting($dctIni, 'telegram', 'chat_ids') ?? getIniSetting($dctIni, 'telegram', 'chat_id');
 
 if ($Token === null) {
     fwrite(STDERR, "В tg.ini не найден token/bot_token.\n");
     exit(1);
 }
 
-if ($ChatId === null) {
-    fwrite(STDERR, "В tg.ini не найден chat_id.\n");
+$ChatIds = [];
+if ($ChatIdsRaw !== null) {
+    $ChatIds = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/u', $ChatIdsRaw) ?: [])));
+}
+
+if ($ChatIds === []) {
+    fwrite(STDERR, "В tg.ini не найден chat_id/chat_ids.\n");
     exit(1);
 }
 
@@ -172,17 +197,26 @@ if (getTextLength($MessageText) > $MaxLength) {
     $MessageText = cutText($MessageText, 3950) . "\n... (сообщение обрезано)";
 }
 
-$dctResult = sendTelegramMessage($Token, $ChatId, $MessageText);
-if (($dctResult['ok'] ?? false) !== true) {
-    $Error = (string)($dctResult['error'] ?? 'Неизвестная ошибка.');
-    $Details = (string)($dctResult['details'] ?? '');
-    $StatusCode = (int)($dctResult['http_status'] ?? 0);
+$SendErrors = [];
+foreach ($ChatIds as $ChatId) {
+    $dctResult = sendTelegramMessage($Token, $ChatId, $MessageText, $Proxy);
+    if (($dctResult['ok'] ?? false) !== true) {
+        $Error = (string)($dctResult['error'] ?? 'Неизвестная ошибка.');
+        $Details = (string)($dctResult['details'] ?? '');
+        $StatusCode = (int)($dctResult['http_status'] ?? 0);
 
-    fwrite(STDERR, "Ошибка отправки в Telegram: {$Error}\n");
-    if ($StatusCode > 0) fwrite(STDERR, "HTTP status: {$StatusCode}\n");
-    if ($Details !== '') fwrite(STDERR, "Детали: {$Details}\n");
+        $SendErrors[] = "chat_id {$ChatId}: {$Error}";
+        if ($StatusCode > 0) $SendErrors[] = "HTTP status: {$StatusCode}";
+        if ($Details !== '') $SendErrors[] = "Детали: {$Details}";
+    }
+}
+
+if ($SendErrors !== []) {
+    foreach ($SendErrors as $ErrorLine) {
+        fwrite(STDERR, $ErrorLine . "\n");
+    }
     exit(1);
 }
 
-fwrite(STDOUT, "Уведомление в Telegram успешно отправлено.\n");
+fwrite(STDOUT, "Уведомление в Telegram успешно отправлено в " . count($ChatIds) . " чат(а/ов).\n");
 exit(0);
