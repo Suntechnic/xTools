@@ -14,7 +14,9 @@ declare(strict_types=1);
  * bot_token = "ВАШ_ТОКЕН_БОТА"
  * chat_id = "ВАШ_CHAT_ID"           ; или chat_ids = "CHAT1,CHAT2"
  * chat_ids = "CHAT1,CHAT2"          ; несколько чатов через запятую
- * proxy = "http://user:pass@host:port"
+ * proxy = "tcp://host:port"         ; ВАЖНО: схема tcp://, не http://
+ * proxy_user = "user"               ; логин прокси (опционально)
+ * proxy_pass = "pass"               ; пароль прокси (опционально)
  */
 
 
