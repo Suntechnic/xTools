@@ -209,11 +209,16 @@ if ($CommitsText === '') {
     exit(0);
 }
 
-$MessageText = $CommitsText;
+$Footer = "\n\nСистема уведомление устарела. Используйте общие системные уведомления tg-send и git-hooks";
 $MaxLength = 4000;
-if (getTextLength($MessageText) > $MaxLength) {
-    $MessageText = cutText($MessageText, 3950) . "\n... (сообщение обрезано)";
+$MaxBodyLength = $MaxLength - getTextLength($Footer);
+
+$MessageText = $CommitsText;
+if (getTextLength($MessageText) > $MaxBodyLength) {
+    $Suffix = "\n... (сообщение обрезано)";
+    $MessageText = cutText($MessageText, $MaxBodyLength - getTextLength($Suffix)) . $Suffix;
 }
+$MessageText .= $Footer;
 
 $SendErrors = [];
 foreach ($ChatIds as $ChatId) {

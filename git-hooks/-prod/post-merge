@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# post-merge: уведомление о git pull через tg-send
+
+set -u
+
+notify_script="/usr/local/sbin/tg-send"
+
+[[ -x "$notify_script" ]] || exit 0
+
+repo=$(basename "$(git rev-parse --show-toplevel)")
+branch=$(git rev-parse --abbrev-ref HEAD)
+hash=$(git rev-parse --short HEAD)
+author=$(git log -1 --pretty=%an)
+subject=$(git log -1 --pretty=%s)
+
+# Количество коммитов, пришедших при слиянии (ORIG_HEAD выставляет git pull/merge)
+received=0
+if git rev-parse -q --verify ORIG_HEAD >/dev/null; then
+  received=$(git rev-list --count ORIG_HEAD..HEAD 2>/dev/null || echo 0)
+fi
+
+message=$(printf '⬇️ Обновление (git pull)\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПолучено коммитов: %s\n%s' \
+  "$repo" "$branch" "$hash" "$author" "$received" "$subject")
+
+/usr/bin/timeout 30s "$notify_script" send --msg "$message" || \
+  echo "tg-send: не удалось отправить уведомление" >&2
+
+exit 0
