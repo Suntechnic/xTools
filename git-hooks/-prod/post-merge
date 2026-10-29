@@ -11,16 +11,29 @@ repo=$(basename "$(git rev-parse --show-toplevel)")
 branch=$(git rev-parse --abbrev-ref HEAD)
 hash=$(git rev-parse --short HEAD)
 author=$(git log -1 --pretty=%an)
-subject=$(git log -1 --pretty=%s)
 
 # Количество коммитов, пришедших при слиянии (ORIG_HEAD выставляет git pull/merge)
 received=0
+received_commits="нет данных (ORIG_HEAD недоступен)"
 if git rev-parse -q --verify ORIG_HEAD >/dev/null; then
   received=$(git rev-list --count ORIG_HEAD..HEAD 2>/dev/null || echo 0)
+  if ! commit_authors=$(git log --reverse --format='%an' ORIG_HEAD..HEAD); then
+    echo "post-merge: не удалось получить список полученных коммитов" >&2
+    received_commits="не удалось получить список коммитов"
+  elif [[ -z "$commit_authors" ]]; then
+    received_commits="нет новых коммитов"
+  else
+    unique_authors=$(printf '%s\n' "$commit_authors" | sort -u)
+    if [[ "$unique_authors" != *$'\n'* ]]; then
+      received_commits=$(git log --reverse --format='%h %s' ORIG_HEAD..HEAD)
+    else
+      received_commits=$(git log --reverse --format='%h %an: %s' ORIG_HEAD..HEAD)
+    fi
+  fi
 fi
 
-message=$(printf '⬇️ Обновление (git pull)\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПолучено коммитов: %s\n%s' \
-  "$repo" "$branch" "$hash" "$author" "$received" "$subject")
+message=$(printf '⬇️ Обновление (git pull)\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПолучено коммитов: %s\nКоммиты:\n%s' \
+  "$repo" "$branch" "$hash" "$author" "$received" "$received_commits")
 
 /usr/bin/timeout 30s "$notify_script" send --msg "$message" || \
   echo "tg-send: не удалось отправить уведомление" >&2
