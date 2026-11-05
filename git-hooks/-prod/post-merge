@@ -35,7 +35,13 @@ fi
 message=$(printf '⬇️ Обновление (git pull)\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПолучено коммитов: %s\nКоммиты:\n%s' \
   "$repo" "$branch" "$hash" "$author" "$received" "$received_commits")
 
-/usr/bin/timeout 30s "$notify_script" send --msg "$message" || \
-  echo "tg-send: не удалось отправить уведомление" >&2
+chat_id=$(git config --local telegram.chat_id 2>/dev/null)
+if [[ -n "$chat_id" ]]; then
+  /usr/bin/timeout 30s "$notify_script" send --chat-id "$chat_id" --msg "$message" || \
+    echo "tg-send: не удалось отправить уведомление" >&2
+else
+  /usr/bin/timeout 30s "$notify_script" send --msg "$message" || \
+    echo "tg-send: не удалось отправить уведомление" >&2
+fi
 
 exit 0
