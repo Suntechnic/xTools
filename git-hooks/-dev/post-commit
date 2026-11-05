@@ -16,7 +16,7 @@ subject=$(git log -1 --pretty=%s)
 message=$(printf '📝 Новый коммит\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\n%s' \
   "$repo" "$branch" "$hash" "$author" "$subject")
 
-chat_id=$(git config --local telegram.chat_id 2>/dev/null)
+chat_id=$(git config --local telegram.chatid 2>/dev/null)
 if [[ -n "$chat_id" ]]; then
   /usr/bin/timeout 30s "$notify_script" send --chat-id "$chat_id" --msg "$message" || \
     echo "tg-send: не удалось отправить уведомление" >&2
